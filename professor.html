@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professor Dashboard - Smart Attendance</title>
+    <link rel="stylesheet" href="professor.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div id="loginContainer" class="container">
+        <h1>Professor Login</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">Login</button>
+        </form>
+    </div>
+
+    <div id="sessionContainer" class="container hidden">
+        <h1>Create Attendance Session</h1>
+        <form id="sessionForm">
+            <div class="form-group">
+                <label for="lat">Latitude:</label>
+                <input type="number" id="lat" name="lat" step="any" required>
+            </div>
+            <div class="form-group">
+                <label for="lon">Longitude:</label>
+                <input type="number" id="lon" name="lon" step="any" required>
+            </div>
+            <div class="form-group">
+                <label for="radius">Boundary Radius (meters):</label>
+                <input type="number" id="radius" name="radius" required>
+            </div>
+            <button type="button" id="getLocationBtn">Get Current Location</button>
+            <button type="submit">Generate Session</button>
+        </form>
+        <div id="qrContainer" class="hidden">
+            <h2>Session QR Code</h2>
+            <img id="qrCode" alt="QR Code">
+            <p id="expiryTime"></p>
+        </div>
+    </div>
+
+    <script>
+        const supabaseUrl = 'https://kqvvdrwuxswvdhnufnks.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxdnZkcnd1eHN3dmRobnVmbmtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMDE5NTQsImV4cCI6MjA1OTU3Nzk1NH0._lReDFt2zxQy9YCG87xmHuXCNfyesJ-di6zLYWTExuc';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let authToken = null;
+
+        // Login form submission
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            console.log('Login form submitted');
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            console.log('Attempting login with:', email);
+
+            try {
+                console.log('Calling Supabase auth...');
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                console.log('Auth response:', { data, error });
+                
+                if (error) {
+                    console.error('Login error:', error);
+                    alert('Login failed: ' + error.message);
+                    return;
+                }
+
+                if (!data || !data.session) {
+                    console.error('No session data received');
+                    alert('Login failed: No session data received');
+                    return;
+                }
+
+                authToken = data.session.access_token;
+                console.log('Login successful, token received:', authToken);
+                
+                document.getElementById('loginContainer').classList.add('hidden');
+                document.getElementById('sessionContainer').classList.remove('hidden');
+            } catch (error) {
+                console.error('Login exception:', error);
+                alert('Login failed: ' + error.message);
+            }
+        });
+
+        // Get current location button
+        document.getElementById('getLocationBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/get_location');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('lat').value = data.lat;
+                    document.getElementById('lon').value = data.lon;
+                } else {
+                    alert('Could not get location automatically. Please enter manually.');
+                }
+            } catch (error) {
+                alert('Error getting location: ' + error.message);
+            }
+        });
+
+        // Session form submission
+        document.getElementById('sessionForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!authToken) {
+                console.error('No auth token available');
+                alert('Please log in first');
+                return;
+            }
+
+            // Validate token format
+            if (!authToken.startsWith('eyJ')) {
+                console.error('Invalid token format:', authToken);
+                alert('Invalid authentication token. Please log in again.');
+                return;
+            }
+
+            const lat = document.getElementById('lat').value;
+            const lon = document.getElementById('lon').value;
+            const radius = document.getElementById('radius').value;
+
+            console.log('Creating session with token:', authToken);
+            console.log('Session data:', { lat, lon, radius });
+
+            try {
+                // Clean and validate the token
+                const cleanToken = authToken.trim();
+                
+                // Log the exact token being used
+                console.log('Clean token being used:', cleanToken);
+                console.log('Token length:', cleanToken.length);
+
+                // Create headers with token
+                const headers = new Headers();
+                headers.append('Content-Type', 'application/json');
+                headers.append('Authorization', `Bearer ${cleanToken}`);
+
+                // Verify headers were set correctly
+                console.log('Authorization header:', headers.get('Authorization'));
+                console.log('Content-Type header:', headers.get('Content-Type'));
+
+                const requestBody = {
+                    lat: parseFloat(lat),
+                    lon: parseFloat(lon),
+                    boundary_radius: parseFloat(radius)
+                };
+
+                // Create and verify the full request
+                const requestOptions = {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(requestBody),
+                    credentials: 'include'
+                };
+
+                // Log the complete request details
+                console.log('Request details:', {
+                    url: '/generate_session',
+                    method: requestOptions.method,
+                    headers: Object.fromEntries(headers.entries()),
+                    body: requestOptions.body
+                });
+
+                // Make the request
+                console.log('Sending request...');
+                const response = await fetch('/generate_session', requestOptions);
+                console.log('Response received');
+
+                // Log response details
+                console.log('Response status:', response.status);
+                console.log('Response status text:', response.statusText);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (response.ok) {
+                    document.getElementById('qrCode').src = data.qr_code_url;
+                    document.getElementById('expiryTime').textContent = `Expires at: ${new Date(data.expiry).toLocaleString()}`;
+                    document.getElementById('qrContainer').classList.remove('hidden');
+                } else {
+                    console.error('Error response:', data);
+                    if (response.status === 401) {
+                        console.error('Authentication failed. Token details:', {
+                            token: cleanToken,
+                            tokenLength: cleanToken.length,
+                            headers: Object.fromEntries(headers.entries())
+                        });
+                        alert('Authentication failed. Please log in again.');
+                        // Clear the token and show login form
+                        authToken = null;
+                        document.getElementById('sessionContainer').classList.add('hidden');
+                        document.getElementById('loginContainer').classList.remove('hidden');
+                    } else {
+                        alert('Error creating session: ' + data.error);
+                    }
+                }
+            } catch (error) {
+                console.error('Session creation error:', error);
+                console.error('Error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                alert('Error creating session: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
