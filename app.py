@@ -24,7 +24,7 @@ load_dotenv()
 app = Flask(__name__, static_folder='.')
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://127.0.0.1:5000"],
+        "origins": ["http://127.0.0.1:5001", "http://localhost:5001"],
         "methods": ["GET", "POST", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
@@ -114,8 +114,11 @@ def get_location():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/generate_session', methods=['POST'])
+@app.route('/generate_session', methods=['POST', 'OPTIONS'])
 def generate_session():
+    if request.method == 'OPTIONS':
+        return '', 200
+
     # Get the authorization header
     auth_header = request.headers.get('Authorization')
     print("Received headers:", dict(request.headers))
@@ -303,4 +306,4 @@ def get_user_role():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5002, debug=True)
+    app.run(debug=True, port=5001)

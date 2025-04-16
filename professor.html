@@ -34,9 +34,11 @@
     </div>
 
     <script>
+        // Initialize Supabase client
+        const { createClient } = supabase;
         const supabaseUrl = 'https://kqvvdrwuxswvdhnufnks.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxdnZkcnd1eHN3dmRobnVmbmtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMDE5NTQsImV4cCI6MjA1OTU3Nzk1NH0._lReDFt2zxQy9YCG87xmHuXCNfyesJ-di6zLYWTExuc';
-        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+        const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
         // Check if user is authenticated
         const authToken = localStorage.getItem('authToken');
@@ -49,20 +51,36 @@
         document.getElementById('getLocationBtn').addEventListener('click', async () => {
             try {
                 if ("geolocation" in navigator) {
+                    console.log('Requesting location...');
                     const position = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            enableHighAccuracy: true,
-                            timeout: 5000,
-                            maximumAge: 0
-                        });
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                                console.log('Location received:', pos.coords);
+                                resolve(pos);
+                            },
+                            (error) => {
+                                console.error('Geolocation error:', error);
+                                reject(error);
+                            },
+                            {
+                                enableHighAccuracy: true,
+                                timeout: 10000,
+                                maximumAge: 0
+                            }
+                        );
                     });
                     
-                    document.getElementById('lat').value = position.coords.latitude.toFixed(6);
-                    document.getElementById('lon').value = position.coords.longitude.toFixed(6);
+                    const lat = position.coords.latitude.toFixed(6);
+                    const lon = position.coords.longitude.toFixed(6);
+                    console.log('Setting location:', { lat, lon });
+                    
+                    document.getElementById('lat').value = lat;
+                    document.getElementById('lon').value = lon;
                 } else {
                     alert('Geolocation is not supported by your browser');
                 }
             } catch (error) {
+                console.error('Location error:', error);
                 alert('Error getting location: ' + error.message);
             }
         });
@@ -75,6 +93,11 @@
             const lon = document.getElementById('lon').value;
             const radius = document.getElementById('radius').value;
 
+            if (!lat || !lon) {
+                alert('Please get your location first');
+                return;
+            }
+
             try {
                 const headers = new Headers({
                     'Content-Type': 'application/json',
@@ -82,35 +105,57 @@
                 });
 
                 console.log('Request headers:', Object.fromEntries(headers.entries()));
+                console.log('Request body:', {
+                    lat: parseFloat(lat),
+                    lon: parseFloat(lon),
+                    boundary_radius: parseFloat(radius) || 0.0
+                });
 
-                const response = await fetch('/api/generate_session', {
+                const response = await fetch('http://localhost:5001/generate_session', {
                     method: 'POST',
                     headers: headers,
                     body: JSON.stringify({
                         lat: parseFloat(lat),
                         lon: parseFloat(lon),
-                        boundary_radius: parseFloat(radius)
+                        boundary_radius: parseFloat(radius) || 0.0
                     })
                 });
 
-                console.log('Response status:', response.status);
-                const data = await response.json();
-                console.log('Response data:', data);
-                
-                if (response.ok) {
-                    document.getElementById('qrCode').src = data.qr_code_url;
-                    document.getElementById('expiryTime').textContent = 
-                        `Expires at: ${new Date(data.expiry).toLocaleString()}`;
-                    document.getElementById('qrContainer').classList.remove('hidden');
-                } else {
+                let data;
+                try {
+                    const text = await response.text();
+                    console.log('Raw response:', text);
+                    try {
+                        data = text ? JSON.parse(text) : {};
+                    } catch (parseError) {
+                        console.error('Error parsing JSON:', parseError);
+                        data = { error: text };
+                    }
+                } catch (e) {
+                    console.error('Error reading response:', e);
+                    data = { error: 'Failed to read server response' };
+                }
+
+                if (!response.ok) {
+                    console.error('Error details:', data);
                     if (response.status === 401) {
                         alert('Session expired. Please login again.');
                         localStorage.removeItem('authToken');
                         window.location.href = '/';
                     } else {
-                        alert('Error creating session: ' + data.error);
+                        throw new Error(data.error || data.detail || `Server error (${response.status}): ${response.statusText}`);
                     }
                 }
+                
+                if (!data.qr_code_url) {
+                    throw new Error('Invalid response: Missing QR code URL');
+                }
+
+                console.log('Response data:', data);
+                document.getElementById('qrCode').src = data.qr_code_url;
+                document.getElementById('expiryTime').textContent = 
+                    `Expires at: ${new Date(data.expiry).toLocaleString()}`;
+                document.getElementById('qrContainer').classList.remove('hidden');
             } catch (error) {
                 console.error('Session creation error:', error);
                 alert('Error creating session: ' + error.message);
