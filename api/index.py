@@ -32,58 +32,80 @@ def verify_token(token):
     except Exception as e:
         return False, None
 
-class handler(BaseHTTPRequestHandler):
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        self.end_headers()
-        return
+def handler(request):
+    if request.method == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            }
+        }
 
-    def do_POST(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
+    if request.method == 'POST':
+        data = request.get_json()
+        path = request.path
 
-        content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
-        data = json.loads(post_data)
-
-        if self.path == '/api/login':
+        if path == '/api/login':
             try:
                 response = supabase.auth.sign_in_with_password({
                     "email": data.get('email'),
                     "password": data.get('password')
                 })
                 
-                self.wfile.write(json.dumps({
-                    'session': {
-                        'access_token': response.session.access_token,
-                        'expires_at': response.session.expires_at,
-                        'refresh_token': response.session.refresh_token
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
                     },
-                    'user': {
-                        'id': response.user.id,
-                        'email': response.user.email
-                    }
-                }).encode())
+                    'body': json.dumps({
+                        'session': {
+                            'access_token': response.session.access_token,
+                            'expires_at': response.session.expires_at,
+                            'refresh_token': response.session.refresh_token
+                        },
+                        'user': {
+                            'id': response.user.id,
+                            'email': response.user.email
+                        }
+                    })
+                }
             except Exception as e:
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
+                return {
+                    'statusCode': 400,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
 
-        elif self.path == '/api/generate_session':
-            auth_header = self.headers.get('Authorization')
+        elif path == '/api/generate_session':
+            auth_header = request.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
-                self.wfile.write(json.dumps({'error': 'Invalid token'}).encode())
-                return
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid token'})
+                }
 
             token = auth_header.split(' ')[1]
             is_valid, response = verify_token(token)
             
             if not is_valid:
-                self.wfile.write(json.dumps({'error': 'Invalid token'}).encode())
-                return
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid token'})
+                }
 
             try:
                 session_data = {
@@ -105,17 +127,31 @@ class handler(BaseHTTPRequestHandler):
                 qr_image.save(img_io, 'PNG')
                 img_io.seek(0)
 
-                self.wfile.write(json.dumps({
-                    'session_id': session['id'],
-                    'qr_code_url': f'/api/get_qr/{session["id"]}',
-                    'expiry': session['expiry']
-                }).encode())
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({
+                        'session_id': session['id'],
+                        'qr_code_url': f'/api/get_qr/{session["id"]}',
+                        'expiry': session['expiry']
+                    })
+                }
 
             except Exception as e:
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
 
-        elif self.path.startswith('/api/get_qr/'):
-            session_id = self.path.split('/')[-1]
+        elif path.startswith('/api/get_qr/'):
+            session_id = path.split('/')[-1]
             try:
                 qr = qrcode.QRCode(version=1, box_size=10, border=5)
                 qr.add_data(session_id)
@@ -126,25 +162,49 @@ class handler(BaseHTTPRequestHandler):
                 qr_image.save(img_io, 'PNG')
                 img_io.seek(0)
 
-                self.send_header('Content-type', 'image/png')
-                self.end_headers()
-                self.wfile.write(img_io.getvalue())
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'image/png',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': img_io.getvalue().decode('latin1')
+                }
 
             except Exception as e:
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
 
-        elif self.path == '/api/verify_attendance':
-            auth_header = self.headers.get('Authorization')
+        elif path == '/api/verify_attendance':
+            auth_header = request.headers.get('Authorization')
             if not auth_header or not auth_header.startswith('Bearer '):
-                self.wfile.write(json.dumps({'error': 'Invalid token'}).encode())
-                return
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid token'})
+                }
 
             token = auth_header.split(' ')[1]
             is_valid, response = verify_token(token)
             
             if not is_valid:
-                self.wfile.write(json.dumps({'error': 'Invalid token'}).encode())
-                return
+                return {
+                    'statusCode': 401,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': 'Invalid token'})
+                }
 
             try:
                 session_id = data.get('session_data')
@@ -152,13 +212,25 @@ class handler(BaseHTTPRequestHandler):
 
                 session = get_session(session_id)
                 if not session:
-                    self.wfile.write(json.dumps({'error': 'Invalid session'}).encode())
-                    return
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'error': 'Invalid session'})
+                    }
 
                 expiry = datetime.fromisoformat(session['expiry'])
                 if datetime.now(UTC) > expiry:
-                    self.wfile.write(json.dumps({'error': 'Session expired'}).encode())
-                    return
+                    return {
+                        'statusCode': 400,
+                        'headers': {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': json.dumps({'error': 'Session expired'})
+                    }
 
                 prof_loc = session['prof_location']
                 dist = distance(
@@ -182,35 +254,63 @@ class handler(BaseHTTPRequestHandler):
                     status=status
                 )
 
-                self.wfile.write(json.dumps({
-                    'student_id': response.user.id,
-                    'session_id': session_id,
-                    'distance': dist,
-                    'timestamp': attendance['timestamp'],
-                    'status': status
-                }).encode())
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({
+                        'student_id': response.user.id,
+                        'session_id': session_id,
+                        'distance': dist,
+                        'timestamp': attendance['timestamp'],
+                        'status': status
+                    })
+                }
 
             except Exception as e:
-                self.wfile.write(json.dumps({'error': str(e)}).encode())
+                return {
+                    'statusCode': 500,
+                    'headers': {
+                        'Content-Type': 'application/json',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': json.dumps({'error': str(e)})
+                }
 
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-
-        if self.path == '/':
+    elif request.method == 'GET':
+        path = request.path
+        if path == '/':
             with open('login.html', 'rb') as file:
-                self.wfile.write(file.read())
-        elif self.path == '/professor.html':
+                content = file.read()
+        elif path == '/professor.html':
             with open('professor.html', 'rb') as file:
-                self.wfile.write(file.read())
-        elif self.path == '/student.html':
+                content = file.read()
+        elif path == '/student.html':
             with open('student.html', 'rb') as file:
-                self.wfile.write(file.read())
-        elif self.path == '/professor.css':
+                content = file.read()
+        elif path == '/professor.css':
             with open('professor.css', 'rb') as file:
-                self.wfile.write(file.read())
-        elif self.path == '/student.css':
+                content = file.read()
+        elif path == '/student.css':
             with open('student.css', 'rb') as file:
-                self.wfile.write(file.read()) 
+                content = file.read()
+        else:
+            return {
+                'statusCode': 404,
+                'headers': {
+                    'Content-Type': 'text/plain',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': 'Not Found'
+            }
+
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'text/html' if path.endswith('.html') else 'text/css',
+                'Access-Control-Allow-Origin': '*'
+            },
+            'body': content.decode('utf-8')
+        } 
