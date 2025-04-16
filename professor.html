@@ -8,22 +8,7 @@
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div id="loginContainer" class="container">
-        <h1>Professor Login</h1>
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Login</button>
-        </form>
-    </div>
-
-    <div id="sessionContainer" class="container hidden">
+    <div id="sessionContainer" class="container">
         <h1>Create Attendance Session</h1>
         <form id="sessionForm">
             <div class="form-group">
@@ -53,60 +38,29 @@
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxdnZkcnd1eHN3dmRobnVmbmtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMDE5NTQsImV4cCI6MjA1OTU3Nzk1NH0._lReDFt2zxQy9YCG87xmHuXCNfyesJ-di6zLYWTExuc';
         const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
-        let authToken = null;
-
-        // Login form submission
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            console.log('Login form submitted');
-            
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-            console.log('Attempting login with:', email);
-
-            try {
-                console.log('Calling Supabase auth...');
-                const { data, error } = await supabaseClient.auth.signInWithPassword({
-                    email: email,
-                    password: password
-                });
-                
-                console.log('Auth response:', { data, error });
-                
-                if (error) {
-                    console.error('Login error:', error);
-                    alert('Login failed: ' + error.message);
-                    return;
-                }
-
-                if (!data || !data.session) {
-                    console.error('No session data received');
-                    alert('Login failed: No session data received');
-                    return;
-                }
-
-                authToken = data.session.access_token;
-                console.log('Login successful, token received:', authToken);
-                
-                document.getElementById('loginContainer').classList.add('hidden');
-                document.getElementById('sessionContainer').classList.remove('hidden');
-            } catch (error) {
-                console.error('Login exception:', error);
-                alert('Login failed: ' + error.message);
-            }
-        });
+        // Check if user is authenticated
+        const authToken = localStorage.getItem('authToken');
+        if (!authToken) {
+            window.location.href = '/';
+            throw new Error('No authentication token found');
+        }
 
         // Get current location button
         document.getElementById('getLocationBtn').addEventListener('click', async () => {
             try {
-                const response = await fetch('/get_location');
-                const data = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('lat').value = data.lat;
-                    document.getElementById('lon').value = data.lon;
+                if ("geolocation" in navigator) {
+                    const position = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 0
+                        });
+                    });
+                    
+                    document.getElementById('lat').value = position.coords.latitude.toFixed(6);
+                    document.getElementById('lon').value = position.coords.longitude.toFixed(6);
                 } else {
-                    alert('Could not get location automatically. Please enter manually.');
+                    alert('Geolocation is not supported by your browser');
                 }
             } catch (error) {
                 alert('Error getting location: ' + error.message);
@@ -117,106 +71,48 @@
         document.getElementById('sessionForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            if (!authToken) {
-                console.error('No auth token available');
-                alert('Please log in first');
-                return;
-            }
-
-            // Validate token format
-            if (!authToken.startsWith('eyJ')) {
-                console.error('Invalid token format:', authToken);
-                alert('Invalid authentication token. Please log in again.');
-                return;
-            }
-
             const lat = document.getElementById('lat').value;
             const lon = document.getElementById('lon').value;
             const radius = document.getElementById('radius').value;
 
-            console.log('Creating session with token:', authToken);
-            console.log('Session data:', { lat, lon, radius });
-
             try {
-                // Clean and validate the token
-                const cleanToken = authToken.trim();
-                
-                // Log the exact token being used
-                console.log('Clean token being used:', cleanToken);
-                console.log('Token length:', cleanToken.length);
-
-                // Create headers with token
-                const headers = new Headers();
-                headers.append('Content-Type', 'application/json');
-                headers.append('Authorization', `Bearer ${cleanToken}`);
-
-                // Verify headers were set correctly
-                console.log('Authorization header:', headers.get('Authorization'));
-                console.log('Content-Type header:', headers.get('Content-Type'));
-
-                const requestBody = {
-                    lat: parseFloat(lat),
-                    lon: parseFloat(lon),
-                    boundary_radius: parseFloat(radius)
-                };
-
-                // Create and verify the full request
-                const requestOptions = {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(requestBody),
-                    credentials: 'include'
-                };
-
-                // Log the complete request details
-                console.log('Request details:', {
-                    url: '/generate_session',
-                    method: requestOptions.method,
-                    headers: Object.fromEntries(headers.entries()),
-                    body: requestOptions.body
+                const headers = new Headers({
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
                 });
 
-                // Make the request
-                console.log('Sending request...');
-                const response = await fetch('/generate_session', requestOptions);
-                console.log('Response received');
+                console.log('Request headers:', Object.fromEntries(headers.entries()));
 
-                // Log response details
+                const response = await fetch('/api/generate_session', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        lat: parseFloat(lat),
+                        lon: parseFloat(lon),
+                        boundary_radius: parseFloat(radius)
+                    })
+                });
+
                 console.log('Response status:', response.status);
-                console.log('Response status text:', response.statusText);
-                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-
                 const data = await response.json();
                 console.log('Response data:', data);
                 
                 if (response.ok) {
                     document.getElementById('qrCode').src = data.qr_code_url;
-                    document.getElementById('expiryTime').textContent = `Expires at: ${new Date(data.expiry).toLocaleString()}`;
+                    document.getElementById('expiryTime').textContent = 
+                        `Expires at: ${new Date(data.expiry).toLocaleString()}`;
                     document.getElementById('qrContainer').classList.remove('hidden');
                 } else {
-                    console.error('Error response:', data);
                     if (response.status === 401) {
-                        console.error('Authentication failed. Token details:', {
-                            token: cleanToken,
-                            tokenLength: cleanToken.length,
-                            headers: Object.fromEntries(headers.entries())
-                        });
-                        alert('Authentication failed. Please log in again.');
-                        // Clear the token and show login form
-                        authToken = null;
-                        document.getElementById('sessionContainer').classList.add('hidden');
-                        document.getElementById('loginContainer').classList.remove('hidden');
+                        alert('Session expired. Please login again.');
+                        localStorage.removeItem('authToken');
+                        window.location.href = '/';
                     } else {
                         alert('Error creating session: ' + data.error);
                     }
                 }
             } catch (error) {
                 console.error('Session creation error:', error);
-                console.error('Error details:', {
-                    name: error.name,
-                    message: error.message,
-                    stack: error.stack
-                });
                 alert('Error creating session: ' + error.message);
             }
         });

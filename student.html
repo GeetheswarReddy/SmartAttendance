@@ -3,118 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Attendance - Smart Attendance</title>
+    <title>Student Dashboard - Smart Attendance</title>
     <link rel="stylesheet" href="student.css">
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div id="loginContainer" class="container">
-        <h1>Student Login</h1>
-        <form id="loginForm">
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Login</button>
-        </form>
+    <div class="container">
+        <h1>Student Attendance</h1>
+        <div id="attendanceSection">
+            <h2>QR Code Scanner</h2>
+            <div id="reader"></div>
+            <button id="startScanner" class="scan-button">Start Scanner</button>
+            <div id="scanResult"></div>
+        </div>
     </div>
 
-    <div id="attendanceContainer" class="container hidden">
-        <h1>Verify Attendance</h1>
-        <form id="attendanceForm">
-            <div class="form-group">
-                <label for="sessionData">Session Data (from QR code):</label>
-                <textarea id="sessionData" name="sessionData" required></textarea>
-            </div>
-            <button type="submit">Verify Attendance</button>
-        </form>
-        <div id="status" class="hidden"></div>
-    </div>
-
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
         const supabaseUrl = 'https://kqvvdrwuxswvdhnufnks.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxdnZkcnd1eHN3dmRobnVmbmtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMDE5NTQsImV4cCI6MjA1OTU3Nzk1NH0._lReDFt2zxQy9YCG87xmHuXCNfyesJ-di6zLYWTExuc';
         const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
-        let authToken = null;
+        // Check if user is authenticated
+        const authToken = localStorage.getItem('authToken');
+        if (!authToken) {
+            window.location.href = '/';
+            throw new Error('No authentication token found');
+        }
 
-        // Login form submission
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            try {
-                const { data, error } = await supabaseClient.auth.signInWithPassword({
-                    email: document.getElementById('email').value,
-                    password: document.getElementById('password').value
-                });
-                
-                if (error) throw error;
-                if (!data || !data.session) throw new Error('No session data received');
+        function initializeScanner() {
+            let html5QrcodeScanner = null;
+            const startButton = document.getElementById('startScanner');
 
-                // Store the full token
-                authToken = data.session.access_token;
-                console.log('Token stored:', authToken); // For debugging
-                
-                document.getElementById('loginContainer').classList.add('hidden');
-                document.getElementById('attendanceContainer').classList.remove('hidden');
-            } catch (error) {
-                console.error('Login error:', error);
-                alert('Login failed: ' + error.message);
-            }
-        });
+            startButton.addEventListener('click', function() {
+                if (!html5QrcodeScanner) {
+                    html5QrcodeScanner = new Html5QrcodeScanner(
+                        "reader", { fps: 10, qrbox: 250 }
+                    );
+                    
+                    html5QrcodeScanner.render(async (decodedText) => {
+                        try {
+                            const position = await new Promise((resolve, reject) => {
+                                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                    enableHighAccuracy: true,
+                                    timeout: 5000,
+                                    maximumAge: 0
+                                });
+                            });
+                            
+                            const response = await fetch('/api/verify_attendance', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${authToken}`
+                                },
+                                body: JSON.stringify({
+                                    session_data: decodedText,
+                                    student_location: {
+                                        lat: parseFloat(position.coords.latitude.toFixed(6)),
+                                        lon: parseFloat(position.coords.longitude.toFixed(6))
+                                    }
+                                })
+                            });
+                            
+                            const result = await response.json();
+                            if (response.ok) {
+                                document.getElementById('scanResult').innerHTML = 
+                                    `Attendance ${result.status}: Distance ${Math.round(result.distance)}m`;
+                            } else {
+                                if (response.status === 401) {
+                                    alert('Session expired. Please login again.');
+                                    localStorage.removeItem('authToken');
+                                    window.location.href = '/';
+                                } else {
+                                    document.getElementById('scanResult').innerHTML = 
+                                        `Error: ${result.error}`;
+                                }
+                            }
 
-        // Attendance form submission
-        document.getElementById('attendanceForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            if (!authToken) {
-                alert('Please log in first');
-                return;
-            }
-
-            try {
-                const sessionId = document.getElementById('sessionData').value.trim();
-                
-                // Debug log for token
-                console.log('Using token:', authToken);
-                
-                const position = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject);
-                });
-                
-                const response = await fetch('/verify_attendance', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}` // Ensure proper format
-                    },
-                    body: JSON.stringify({
-                        session_data: sessionId,
-                        student_location: {
-                            lat: position.coords.latitude,
-                            lon: position.coords.longitude
+                            // Clear scanner after successful submission
+                            html5QrcodeScanner.clear();
+                            html5QrcodeScanner = null;
+                            startButton.textContent = 'Start Scanner';
+                            
+                        } catch (error) {
+                            console.error('Error:', error);
+                            document.getElementById('scanResult').innerHTML = 
+                                `Error: ${error.message}`;
                         }
-                    })
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.error || 'Failed to verify attendance');
+                    });
+                    startButton.textContent = 'Stop Scanner';
+                } else {
+                    html5QrcodeScanner.clear();
+                    html5QrcodeScanner = null;
+                    startButton.textContent = 'Start Scanner';
                 }
+            });
+        }
 
-                const result = await response.json();
-                const statusDiv = document.getElementById('status');
-                statusDiv.textContent = `Attendance verified! Status: ${result.status}`;
-                statusDiv.classList.remove('hidden');
-                
-            } catch (error) {
-                console.error('Verification error:', error);
-                alert(error.message);
-            }
-        });
+        // Initialize scanner when page loads
+        initializeScanner();
     </script>
 </body>
 </html>

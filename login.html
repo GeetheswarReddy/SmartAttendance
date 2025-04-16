@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Attendance - Login</title>
+    <link rel="stylesheet" href="login.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>Smart Attendance</h1>
+        <div class="login-options">
+            <button id="professorBtn" class="role-btn">Professor Login</button>
+            <button id="studentBtn" class="role-btn">Student Login</button>
+        </div>
+
+        <div id="loginForm" class="hidden">
+            <h2 id="loginTitle">Login</h2>
+            <form id="authForm">
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password:</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const supabaseUrl = 'https://kqvvdrwuxswvdhnufnks.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxdnZkcnd1eHN3dmRobnVmbmtzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwMDE5NTQsImV4cCI6MjA1OTU3Nzk1NH0._lReDFt2zxQy9YCG87xmHuXCNfyesJ-di6zLYWTExuc';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let userRole = null;
+
+        document.getElementById('professorBtn').addEventListener('click', () => {
+            userRole = 'professor';
+            document.getElementById('loginTitle').textContent = 'Professor Login';
+            document.getElementById('loginForm').classList.remove('hidden');
+        });
+
+        document.getElementById('studentBtn').addEventListener('click', () => {
+            userRole = 'student';
+            document.getElementById('loginTitle').textContent = 'Student Login';
+            document.getElementById('loginForm').classList.remove('hidden');
+        });
+
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const { data, error } = await supabaseClient.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                if (error) {
+                    throw error;
+                }
+
+                if (!data || !data.session) {
+                    throw new Error('No session data received');
+                }
+
+                // Store the token and redirect based on role
+                localStorage.setItem('authToken', data.session.access_token);
+                
+                if (userRole === 'professor') {
+                    window.location.href = '/professor.html';
+                } else {
+                    window.location.href = '/student.html';
+                }
+            } catch (error) {
+                alert('Login failed: ' + error.message);
+            }
+        });
+    </script>
+</body>
+</html>
