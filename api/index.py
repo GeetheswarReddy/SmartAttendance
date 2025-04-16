@@ -281,36 +281,88 @@ def handler(request):
 
     elif request.method == 'GET':
         path = request.path
-        if path == '/':
-            with open('login.html', 'rb') as file:
-                content = file.read()
-        elif path == '/professor.html':
-            with open('professor.html', 'rb') as file:
-                content = file.read()
-        elif path == '/student.html':
-            with open('student.html', 'rb') as file:
-                content = file.read()
-        elif path == '/professor.css':
-            with open('professor.css', 'rb') as file:
-                content = file.read()
-        elif path == '/student.css':
-            with open('student.css', 'rb') as file:
-                content = file.read()
-        else:
+        try:
+            if path == '/':
+                with open('login.html', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/html',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            elif path == '/professor.html':
+                with open('professor.html', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/html',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            elif path == '/student.html':
+                with open('student.html', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/html',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            elif path == '/professor.css':
+                with open('professor.css', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/css',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            elif path == '/student.css':
+                with open('student.css', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/css',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            elif path == '/login.css':
+                with open('login.css', 'rb') as file:
+                    content = file.read()
+                    return {
+                        'statusCode': 200,
+                        'headers': {
+                            'Content-Type': 'text/css',
+                            'Access-Control-Allow-Origin': '*'
+                        },
+                        'body': content.decode('utf-8')
+                    }
+            else:
+                return {
+                    'statusCode': 404,
+                    'headers': {
+                        'Content-Type': 'text/plain',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': 'Not Found'
+                }
+        except Exception as e:
             return {
-                'statusCode': 404,
+                'statusCode': 500,
                 'headers': {
                     'Content-Type': 'text/plain',
                     'Access-Control-Allow-Origin': '*'
                 },
-                'body': 'Not Found'
-            }
-
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Content-Type': 'text/html' if path.endswith('.html') else 'text/css',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': content.decode('utf-8')
-        } 
+                'body': f'Error: {str(e)}'
+            } 

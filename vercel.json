@@ -20,8 +20,28 @@
       "dest": "/api/index.py"
     },
     {
-      "src": "/(.*)",
-      "dest": "/$1"
+      "src": "/",
+      "dest": "/login.html"
+    },
+    {
+      "src": "/professor.html",
+      "dest": "/professor.html"
+    },
+    {
+      "src": "/student.html",
+      "dest": "/student.html"
+    },
+    {
+      "src": "/professor.css",
+      "dest": "/professor.css"
+    },
+    {
+      "src": "/student.css",
+      "dest": "/student.css"
+    },
+    {
+      "src": "/login.css",
+      "dest": "/login.css"
     }
   ]
 } 
